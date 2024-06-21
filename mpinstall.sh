@@ -40,6 +40,11 @@ def delete_folder(path):
         if file["type"] == "folder":
             os.rmdir(file["path"])
     os.rmdir(path)
+
+def sys_info():
+    import sys
+    print(sys.platform, sys.implementation.version)
+    
 '''
 
 # Check if mpremote is installed
@@ -49,6 +54,7 @@ then
     echo "pip install mpremote"
     exit 1
 fi
+
 
 if [[ $1 == "" ]]; then
   echo "Usage: $0 <package_directory> [mpy]"
@@ -71,11 +77,12 @@ LIBDIR="lib"
 # returns 0 if device is present, 1 if it is not
 function device_present {
   # Run mpremote and capture the error message
-  error=$(mpremote)
-  
+  echo "device present?"
+  sys_info="${PYTHON_HELPERS}sys_info()"
+  error=$(mpremote exec "$sys_info")
+  echo $error
   # Return error if error message contains "OSError: [Errno 2] ENOENT"
   if [[ $error == *"no device found"* ]]; then
-      # echo "No device found. Please connect a device and try again."
       return 0
   else
       return 1
