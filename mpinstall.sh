@@ -6,9 +6,10 @@
 # Installs a MicroPython Package to a board using mpremote.
 # 
 # This script accepts an optional argument to compile .py files to .mpy.
-# Simply run the script with the optional argument:
+# by adding the optional argument "mpy".
+# The "-r" flag can be used to reset the board after installation.
 #
-# ./install.sh mpy
+# ./install.sh PACKAGE_FOLDER [mpy] [-r]
 
 PYTHON_HELPERS='''
 import os
@@ -139,15 +140,15 @@ echo "Installing $PKGNAME"
 
 # If directories do not exist, create them
 if ! directory_exists "/${LIBDIR}"; then
-  echo "Creating $LIBDIR on board"
-  mpremote mkdir "${LIBDIR}"
+  echo "Creating /$LIBDIR on board"
+  mpremote mkdir "/${LIBDIR}"
 fi
 
 if directory_exists "/${LIBDIR}/${PKGDIR}"; then
-  echo "Deleting $LIBDIR/$PKGDIR on board"
+  echo "Deleting :/$LIBDIR/$PKGDIR on board"
   delete_folder="${PYTHON_HELPERS}delete_folder(\"/${LIBDIR}/${PKGDIR}\")"
   mpremote exec "$delete_folder"
-  # mpremote mkdir "/${LIBDIR}/${PKGDIR}"
+
 fi
 mpremote mkdir "/${LIBDIR}/${PKGDIR}"
 
@@ -156,6 +157,13 @@ if [ "$2" = "mpy" ]; then
   ext=$2
   echo ".py files will be compiled to .mpy"
 fi
+
+reset=false
+for arg in "$@"; do
+  if [ "$arg" == "-r" ]; then
+    reset=true
+  fi
+done
 
 existing_files=$(mpremote fs ls ":/${LIBDIR}/${PKGDIR}")
 
@@ -215,5 +223,9 @@ if [ "$ext" == "mpy" ]; then
   rm $SRCDIR/*.mpy
 fi
 
-echo "Done. Resetting target board ..."
-mpremote reset
+echo "Package $PKGNAME installed successfully"
+if [ "$reset" = true ]; then
+  echo "Resetting target board ..."
+  mpremote reset
+  exit 1
+fi
