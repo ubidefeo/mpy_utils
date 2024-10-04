@@ -3,13 +3,14 @@
 # MicroPython Package Installer
 # Created by: Ubi de Feo and Sebastian Romero
 # 
-# Installs a MicroPython Package to a board using mpremote.
+# Installs MicroPython Packages to the /lib folder of a board using mpremote.
 # 
-# This script accepts an optional argument to compile .py files to .mpy.
-# by adding the optional argument "mpy".
-# The "-r" flag can be used to reset the board after installation.
+# - Installation is recursive, so all files and folders in the package directory.
+# - Supports multiple packages and optional arguments.
+# - Accepts optional argument to compile .py files to .mpy. [--mpy]
+# - Accepts optional argument to skip resetting the board. [--no-reset]
 #
-# ./install.sh PACKAGE_FOLDER [mpy] [-r]
+# ./install.sh <PACKAGE_FOLDER> ... <PACKAGE_FOLDER> [--mpy][--no-reset]
 
 PYTHON_HELPERS='''
 import os
@@ -48,40 +49,13 @@ def sys_info():
     
 '''
 
-# Check if mpremote is installed
-if ! command -v mpremote &> /dev/null
-then
-    echo "mpremote could not be found. Please install it by running:"
-    echo "pip install mpremote"
-    exit 1
-fi
-
-
-if [[ $1 == "" ]]; then
-  echo "Usage: $0 <package_directory> [mpy]"
-  exit 1
-fi
-
-
-# Name to display during installation
-# PKGNAME="Generic package for MicroPython"
-PKGNAME=`basename $1`
-# Destination directory for the package on the board
-PKGDIR=`basename $1`
-# Source directory for the package on the host
-SRCDIR=`realpath $1`
-# Board library directory
-LIBDIR="lib"
-
-
 # Check if device is present/connectable
 # returns 0 if device is present, 1 if it is not
 function device_present {
   # Run mpremote and capture the error message
-  echo "device present?"
+  echo "Checking if a MicroPython board is available..."
   sys_info="${PYTHON_HELPERS}sys_info()"
   error=$(mpremote exec "$sys_info")
-  echo $error
   # Return error if error message contains "OSError: [Errno 2] ENOENT"
   if [[ $error == *"no device found"* ]]; then
       return 0
@@ -90,11 +64,6 @@ function device_present {
   fi
 }
 
-
-if device_present == 0; then
-  echo "No device found. Please connect a device and try again."
-  exit 1
-fi
 
 # Check if a directory exists
 # Returns 0 if directory exists, 1 if it does not
@@ -136,94 +105,144 @@ function delete_file {
   fi
 }
 
-echo "Installing $PKGNAME"
-
-# If directories do not exist, create them
-if ! directory_exists "/${LIBDIR}"; then
-  echo "Creating /$LIBDIR on board"
-  mpremote mkdir "/${LIBDIR}"
-fi
-
-if directory_exists "/${LIBDIR}/${PKGDIR}"; then
-  echo "Deleting :/$LIBDIR/$PKGDIR on board"
-  delete_folder="${PYTHON_HELPERS}delete_folder(\"/${LIBDIR}/${PKGDIR}\")"
-  mpremote exec "$delete_folder"
-
-fi
-mpremote mkdir "/${LIBDIR}/${PKGDIR}"
-
-ext="py"
-if [ "$2" = "mpy" ]; then
-  ext=$2
-  echo ".py files will be compiled to .mpy"
-fi
-
-reset=false
-for arg in "$@"; do
-  if [ "$arg" == "-r" ]; then
-    reset=true
+function create_folder {
+  echo "Creating $1 on board"
+  error=$(mpremote mkdir "$1")
+  # Print error message if return code is not 0
+  if [ $? -ne 0 ]; then
+    echo "Error: $error"
   fi
-done
+}
 
-existing_files=$(mpremote fs ls ":/${LIBDIR}/${PKGDIR}")
+function delete_folder {
+  echo "Deleting $1 on board"
+  delete_folder="${PYTHON_HELPERS}delete_folder(\"/$1\")"
+  mpremote exec "$delete_folder"
+}
 
-for filename in $SRCDIR/*; do
-    f_name=`basename $filename`
-    source_extension="${f_name##*.}"
-    destination_extension=$source_extension
 
-    # If examples are distributed within the package
-    # ensures they are copied but not compiled to .mpy
-    if [[ -d $filename && "$f_name" == "examples" ]]; then
-      if ! directory_exists "/${LIBDIR}/${PKGDIR}/examples"; then
-        echo "Creating $LIBDIR/$PKGDIR/examples on board"
-        mpremote mkdir "/${LIBDIR}/${PKGDIR}/examples"
-      fi
+function install_package {
+  # Name to display during installation
+  # PKGNAME="Generic package for MicroPython"
+  PKGNAME=`basename $1`
+  # Destination directory for the package on the board
+  PKGDIR=`basename $1`
+  # Source directory for the package on the host
+  SRCDIR=`realpath $1`
+  # Board's library directory
+  LIBDIR="/lib"
 
-      for example_file in $filename/*; do
-        example_f_name=`basename $example_file`
-        example_source_extension="${example_f_name##*.}"
-        example_destination_extension=$example_source_extension
+  # echo "Package name: $PKGNAME"
+  # echo "Package directory: $PKGDIR"
+  # echo "Source directory: $SRCDIR"
+  # echo "Library directory: $LIBDIR"
+  # echo "Installing $PKGNAME"
 
-        if [[ $existing_files == *"${example_f_name%.*}.$example_source_extension"* ]]; then
-          delete_file ":/${LIBDIR}/$PKGDIR/examples/${example_f_name%.*}.$example_source_extension"
-        fi
-
-        if [ "$example_source_extension" = "py" ] && [[ $existing_files == *"${example_f_name%.*}.mpy"* ]]; then
-          delete_file ":/${LIBDIR}/$PKGDIR/examples/${example_f_name%.*}.mpy"
-        fi
-
-        copy_file $filename/${example_f_name%.*}.$example_destination_extension ":/${LIBDIR}/$PKGDIR/examples/${example_f_name%.*}.$example_destination_extension"
-      done
-      continue
-    fi
-
-    if [[ "$ext" == "mpy" && "$source_extension" == "py" ]]; then
-      echo "Compiling $SRCDIR/$f_name to $SRCDIR/${f_name%.*}.$ext"
-      mpy-cross "$SRCDIR/$f_name"
-      destination_extension=$ext
-    fi
+  if directory_exists "${LIBDIR}/${PKGDIR}"; then
+    echo "Deleting $LIBDIR/$PKGDIR on board"
+    delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
+    mpremote exec "$delete_folder"
+  fi
+  
+  package_files=($(find $1))
+  items_count=${#package_files[@]}
+  current_item=0
+  for item_path in "${package_files[@]}"; do
     
-    # Make sure previous versions of the given file are deleted.
-    if [[ $existing_files == *"${f_name%.*}.$source_extension"* ]]; then
-      delete_file ":/${LIBDIR}/$PKGDIR/${f_name%.*}.$source_extension"
+
+    item=`basename $item_path`
+    if [ ! -f "$item_path" ] && [ ! -d "$item_path" ]; then
+      echo -n "symlink file ignored"
+      continue
+    else
+      current_item=$((current_item+1))
+      echo -n "[$(printf "%2d" $current_item)/$(printf "%2d" $items_count)] "
+      if [ -d "$item_path" ]; then
+        
+        create_folder "$LIBDIR/$item_path"
+      elif [ -f "$item_path" ]; then
+        f_name=`basename $item`
+        source_extension="${f_name##*.}"
+        destination_extension=$source_extension
+        if [[ "$ext" == "mpy" && "$source_extension" == "py" ]]; then
+          echo "Compiling $f_name to ${f_name%.*}.$ext"
+          mpy-cross "$item_path"
+          destination_extension=$ext
+          copy_file ${item_path%.*}.$destination_extension :$LIBDIR/${item_path%.*}.$destination_extension
+        else
+          copy_file $item_path :$LIBDIR/$item_path
+        fi
+      fi
     fi
 
-    # Check if source file has a .py extension and if a .mpy file exists on the board
-    if [ "$source_extension" = "py" ] && [[ $existing_files == *"${f_name%.*}.mpy"* ]]; then
-      delete_file ":/${LIBDIR}/$PKGDIR/${f_name%.*}.mpy"
-    fi
+    
+      
 
-    # Copy either the .py or .mpy file to the board depending on the chosen option
-    copy_file $SRCDIR/${f_name%.*}.$destination_extension ":/${LIBDIR}/$PKGDIR/${f_name%.*}.$destination_extension"
-done
+  done
 
-if [ "$ext" == "mpy" ]; then
-  echo "cleaning up mpy files"
-  rm $SRCDIR/*.mpy
+  if [ "$ext" == "mpy" ]; then
+    echo "cleaning up mpy files"
+    rm $SRCDIR/*.mpy
+  fi
+
+  echo -e "\n***Package $PKGNAME installed successfully***\n"
+}
+
+# No arguments passed
+if [[ $1 == "" ]]; then
+  echo "Usage: $0 <package_directory> [--mpy][--no-reset]"
+  exit 1
 fi
 
-echo "Package $PKGNAME installed successfully"
+# Check if mpremote is installed
+if ! command -v mpremote &> /dev/null
+then
+    echo "mpremote could not be found. Please install it by running:"
+    echo "pip install mpremote"
+    exit 1
+fi
+
+reset=true
+ext="py"
+packages=()
+for arg in "$@"; do
+  if [ "$arg" == "--no-reset" ]; then
+    reset=false
+    continue
+  fi
+  if [ "$arg" == "--mpy" ]; then
+    ext="mpy"
+    continue
+  fi
+  packages+=($arg)
+done
+
+
+# Start the installation process
+echo "MicroPython Package Installer"
+echo "-----------------------------"
+echo "Packages:" 
+for package in "${packages[@]}"; do
+  echo "• $package"
+done
+
+if device_present == 0; then
+  echo "No device found. Please connect a MicroPython board and try again."
+  exit 1
+fi
+
+package_number=0
+start_dir=`pwd`
+for package in "${packages[@]}"; do
+  package_number=$((package_number+1))
+  echo "Installing `basename $package` ($package_number/${#packages[@]})"
+  parent_dir=`realpath ${package%/*}`
+  find $parent_dir -name ".DS_Store" -type f -delete
+  cd $parent_dir
+  install_package `basename $package`
+  cd $start_dir
+done
+
 if [ "$reset" = true ]; then
   echo "Resetting target board ..."
   mpremote reset
