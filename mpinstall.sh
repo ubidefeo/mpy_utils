@@ -190,7 +190,7 @@ function install_package {
 
 # No arguments passed
 if [[ $1 == "" ]]; then
-  echo "Usage: $0 <package_directory> [--mpy][--no-reset]"
+  echo "Usage: $0 <package_directory> <package_directory> [--mpy][--no-reset]"
   exit 1
 fi
 
