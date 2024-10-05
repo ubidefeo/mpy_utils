@@ -82,101 +82,113 @@ function directory_exists {
 # Copies a file to the board using mpremote
 # Only produces output if an error occurs
 function copy_file {
-  echo "Copying $1 to $2"
+  output="Copying $1 to $2"
+  echo -n "$output"
   # Run mpremote and capture the error message
   error=$(mpremote cp $1 $2)
-
   # Print error message if return code is not 0
   if [ $? -ne 0 ]; then
     echo "Error: $error"
   fi
+  echo -e "\r√ $output"
 }
 
 # Deletes a file from the board using mpremote
 # Only produces output if an error occurs
 function delete_file {
-  echo "Deleting $1"
+  output="Deleting $1"
+  echo -n "$output"
   # Run mpremote and capture the error message
   error=$(mpremote rm $1)
-
   # Print error message if return code is not 0
   if [ $? -ne 0 ]; then
     echo "Error: $error"
   fi
+  echo -e "\r√ $output"
 }
 
 function create_folder {
-  echo "Creating $1 on board"
+  output_msg="Creating $1 on board"
+  echo -n "$output_msg"
   error=$(mpremote mkdir "$1")
   # Print error message if return code is not 0
   if [ $? -ne 0 ]; then
     echo "Error: $error"
   fi
+  echo -e "\r√ $output_msg"
 }
 
 function delete_folder {
-  echo "Deleting $1 on board"
+  output_msg="Deleting $1 on board"
+  echo -n "$output_msg"
   delete_folder="${PYTHON_HELPERS}delete_folder(\"/$1\")"
   mpremote exec "$delete_folder"
+  echo -e "\r√ $output_msg"
 }
 
 
 function install_package {
+  if [[ $1 == "" ]]; then
+    echo "!!! No package path supplied !!!"
+    exit 1
+  fi
   # Name to display during installation
-  # PKGNAME="Generic package for MicroPython"
   PKGNAME=`basename $1`
   # Destination directory for the package on the board
   PKGDIR=`basename $1`
   # Source directory for the package on the host
-  SRCDIR=`realpath $1`
+  SRCDIR=`realpath .`
   # Board's library directory
   LIBDIR="/lib"
 
-  # echo "Package name: $PKGNAME"
-  # echo "Package directory: $PKGDIR"
-  # echo "Source directory: $SRCDIR"
-  # echo "Library directory: $LIBDIR"
-  # echo "Installing $PKGNAME"
+  # if directory_exists "${LIBDIR}/${PKGDIR}"; then
+  #   echo "Deleting $LIBDIR/$PKGDIR on board"
+  #   delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
+  #   mpremote exec "$delete_folder"
+  # fi
+  # create_folder "$LIBDIR/$PKGDIR"
 
-  if directory_exists "${LIBDIR}/${PKGDIR}"; then
-    echo "Deleting $LIBDIR/$PKGDIR on board"
-    delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
-    mpremote exec "$delete_folder"
-  fi
-  
-  package_files=($(find $1))
+  IFS=$'\n' read -rd '' -a package_files < <(find . -mindepth 1)
   items_count=${#package_files[@]}
   current_item=0
   for item_path in "${package_files[@]}"; do
-    
-
-    item=`basename $item_path`
+    destination_subpath="${item_path//.\//$PKGNAME/}"
     if [ ! -f "$item_path" ] && [ ! -d "$item_path" ]; then
       echo -n "symlink file ignored"
       continue
     else
       current_item=$((current_item+1))
-      echo -n "[$(printf "%2d" $current_item)/$(printf "%2d" $items_count)] "
+      # only delete and create package directory if it is the first item
+      # if the script never made it here, it means no files were found
+      if [ $current_item == 1 ]; then
+        output_msg="Deleting $LIBDIR/$PKGDIR on board"
+        if directory_exists "${LIBDIR}/${PKGDIR}"; then
+          echo -n "$output_msg"
+          delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
+          mpremote exec "$delete_folder"
+        fi
+        echo -e "\r√ $output_msg"
+        create_folder "$LIBDIR/$PKGDIR"
+      fi
+      step_counter="[$(printf "%2d" $current_item)/$(printf "%2d" $items_count)] "
+      echo -n "$step_counter"
       if [ -d "$item_path" ]; then
-        
-        create_folder "$LIBDIR/$item_path"
+        create_folder "$LIBDIR/$destination_subpath"
       elif [ -f "$item_path" ]; then
-        f_name=`basename $item`
+        f_name=`basename $item_path`
         source_extension="${f_name##*.}"
         destination_extension=$source_extension
+        clean_item_path="${item_path//.\//}"
         if [[ "$ext" == "mpy" && "$source_extension" == "py" ]]; then
-          echo "Compiling $f_name to ${f_name%.*}.$ext"
           mpy-cross "$item_path"
           destination_extension=$ext
-          copy_file ${item_path%.*}.$destination_extension :$LIBDIR/${item_path%.*}.$destination_extension
+          copy_file ${clean_item_path%.*}.$destination_extension :$LIBDIR/${destination_subpath%.*}.$destination_extension
         else
-          copy_file $item_path :$LIBDIR/$item_path
+          copy_file $clean_item_path :$LIBDIR/$destination_subpath
         fi
       fi
     fi
 
-    
-      
 
   done
 
@@ -184,13 +196,17 @@ function install_package {
     echo "cleaning up mpy files"
     rm $SRCDIR/*.mpy
   fi
-
-  echo -e "\n***Package $PKGNAME installed successfully***\n"
+  if [ $items_count -gt 0 ]; then
+    echo -e "\n*** Package $PKGNAME installed successfully ***\n"  
+  else
+    echo -e "\n*** Nothing done: no files found in package $PKGNAME ***\n"
+  fi
+  
 }
 
 # No arguments passed
 if [[ $1 == "" ]]; then
-  echo "Usage: $0 <package_directory> <package_directory> [--mpy][--no-reset]"
+  echo "Usage: $0 <package_directory> [--mpy][--no-reset]"
   exit 1
 fi
 
@@ -217,13 +233,14 @@ for arg in "$@"; do
   packages+=($arg)
 done
 
-
+echo "Packages: ${packages[@]}"
 # Start the installation process
 echo "MicroPython Package Installer"
 echo "-----------------------------"
 echo "Packages:" 
+
 for package in "${packages[@]}"; do
-  echo "• $package"
+  echo "• `basename $package`"
 done
 
 if device_present == 0; then
@@ -234,11 +251,13 @@ fi
 package_number=0
 start_dir=`pwd`
 for package in "${packages[@]}"; do
+  echo "-----------------------------"
+  # echo "Installing package: `basename $package`"
   package_number=$((package_number+1))
-  echo "Installing `basename $package` ($package_number/${#packages[@]})"
-  parent_dir=`realpath ${package%/*}`
-  find $parent_dir -name ".DS_Store" -type f -delete
-  cd $parent_dir
+  echo "Installing `basename $package` [$package_number/${#packages[@]}]"
+  package_dir=`realpath $package`
+  find $package_dir -name ".DS_Store" -type f -delete
+  cd $package_dir
   install_package `basename $package`
   cd $start_dir
 done
