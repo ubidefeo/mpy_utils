@@ -69,14 +69,19 @@ function device_present {
 # Returns 0 if directory exists, 1 if it does not
 function directory_exists {
   # Run mpremote and capture the error message
-  error=$(mpremote fs ls $1)
+  output="Checking if \"$1\" exists on board"
+  echo -ne "❔ $output"
 
+  error=$(mpremote fs ls $1 2>&1)
+  echo -ne "\r\033[2K"
+  echo -e "\r√ $output"
   # Return error if error message contains "OSError: [Errno 2] ENOENT"
-  if [[ $error == *"OSError: [Errno 2] ENOENT"* ]]; then
+  if [[ $error == *"OSError: [Errno 2] ENOENT"* || $error == *"No such"* ]]; then
       return 1
   else
       return 0
   fi
+  
 }
 
 # Copies a file to the board using mpremote
@@ -188,8 +193,6 @@ function install_package {
         fi
       fi
     fi
-
-
   done
 
   if [ "$ext" == "mpy" ]; then
