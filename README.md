@@ -1,6 +1,6 @@
 # mpy_utils
 
-Useful tools for MicroPython development
+Useful tools for MicroPython development.
 
 ## `mpinstall.sh`
 
