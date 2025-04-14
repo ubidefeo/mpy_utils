@@ -4,11 +4,10 @@ Useful tools for MicroPython development
 
 ## `mpinstall.sh`
 
-Shell script (Mac OS, Linux, [PowerShell?]) to install a package in development to the board's `/lib` folder.
+Shell script (Mac OS, Linux, [PowerShell?]) to install a package in development to the board's main writable libraries folder (`/lib` or `/flash/lib` folder).
 Its ideal place is in your OS's `$PATH` so that it can be invoked from anywhere.
 
 Requirements: mpremote
-
 
 Running simply `./mpinstall.sh` will check for `mpremote` and display usage:
 
@@ -40,7 +39,7 @@ Assuming we are working on the Arduino Runtime for MicroPython, if we are in the
 └── package.json
 ```
 
-To install the package the following command would need to be issued, assuming `mpinstall.sh` is in your OS's `$PATH`
+To install the package the following command would need to be issued, assuming `mpinstall.sh` is already in your OS's `$PATH`
 
 ```shell
 mpinstall.sh arduino
