@@ -14,8 +14,7 @@
 
 PYTHON_HELPERS='''
 import os
-
-os.chdir("/")
+import sys
 
 def is_directory(path):
   return True if os.stat(path)[0] == 0x4000 else False
@@ -47,6 +46,13 @@ def sys_info():
     import sys
     print(sys.platform, sys.implementation.version)
     
+def get_root(has_flash_mount = True):
+    if "/flash" in sys.path:
+        return "/flash"
+    else:
+        return ""
+
+os.chdir(get_root())
 '''
 
 # Check if device is present/connectable
@@ -69,19 +75,14 @@ function device_present {
 # Returns 0 if directory exists, 1 if it does not
 function directory_exists {
   # Run mpremote and capture the error message
-  output="Checking if \"$1\" exists on board"
-  echo -ne "❔ $output"
+  error=$(mpremote fs ls $1)
 
-  error=$(mpremote fs ls $1 2>&1)
-  echo -ne "\r\033[2K"
-  echo -e "\r√ $output"
   # Return error if error message contains "OSError: [Errno 2] ENOENT"
-  if [[ $error == *"OSError: [Errno 2] ENOENT"* || $error == *"No such"* ]]; then
+  if [[ $error == *"OSError: [Errno 2] ENOENT"* ]]; then
       return 1
   else
       return 0
   fi
-  
 }
 
 # Copies a file to the board using mpremote
@@ -95,6 +96,7 @@ function copy_file {
   if [ $? -ne 0 ]; then
     echo "Error: $error"
   fi
+  echo -ne "\r\033[2K"
   echo -e "\r√ $output"
 }
 
@@ -109,6 +111,7 @@ function delete_file {
   if [ $? -ne 0 ]; then
     echo "Error: $error"
   fi
+  echo -ne "\r\033[2K"
   echo -e "\r√ $output"
 }
 
@@ -120,6 +123,7 @@ function create_folder {
   if [ $? -ne 0 ]; then
     echo "Error: $error"
   fi
+  echo -ne "\r\033[2K"
   echo -e "\r√ $output_msg"
 }
 
@@ -127,7 +131,12 @@ function delete_folder {
   output_msg="Deleting $1 on board"
   echo -n "$output_msg"
   delete_folder="${PYTHON_HELPERS}delete_folder(\"/$1\")"
-  mpremote exec "$delete_folder"
+  error=$(mpremote exec "$delete_folder")
+  # Print error message if return code is not 0
+  if [ $? -ne 0 ]; then
+    echo "Error: $error"
+  fi
+  echo -ne "\r\033[2K"
   echo -e "\r√ $output_msg"
 }
 
@@ -144,14 +153,15 @@ function install_package {
   # Source directory for the package on the host
   SRCDIR=`realpath .`
   # Board's library directory
-  LIBDIR="/lib"
-
-  # if directory_exists "${LIBDIR}/${PKGDIR}"; then
-  #   echo "Deleting $LIBDIR/$PKGDIR on board"
-  #   delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
-  #   mpremote exec "$delete_folder"
-  # fi
-  # create_folder "$LIBDIR/$PKGDIR"
+  device_root="${PYTHON_HELPERS}print(get_root())"
+  output=$(mpremote exec "$device_root")
+  output=$(echo "$output" | tr -d '[:space:]')
+  echo "$output"
+  if [ "$output" == "/flash" ]; then
+    echo "Board has root in /flash"
+    # output=""
+  fi
+  LIBDIR="$output/lib"
 
   IFS=$'\n' read -rd '' -a package_files < <(find . -mindepth 1)
   items_count=${#package_files[@]}
@@ -172,6 +182,7 @@ function install_package {
           delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
           mpremote exec "$delete_folder"
         fi
+        echo -ne "\r\033[2K"
         echo -e "\r√ $output_msg"
         create_folder "$LIBDIR/$PKGDIR"
       fi
@@ -193,6 +204,8 @@ function install_package {
         fi
       fi
     fi
+
+
   done
 
   if [ "$ext" == "mpy" ]; then
