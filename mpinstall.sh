@@ -48,9 +48,9 @@ def sys_info():
     
 def get_root(has_flash_mount = True):
     if "/flash" in sys.path:
-        return "/flash"
+        return "/flash/"
     else:
-        return ""
+        return "/"
 
 os.chdir(get_root())
 '''
@@ -161,7 +161,7 @@ function install_package {
     echo "Board has root in /flash"
     # output=""
   fi
-  LIBDIR="$output/lib"
+  LIBDIR="$output""lib"
 
   IFS=$'\n' read -rd '' -a package_files < <(find . -mindepth 1)
   items_count=${#package_files[@]}
