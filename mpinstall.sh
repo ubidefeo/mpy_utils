@@ -87,7 +87,7 @@ function folder_exists {
 # Copies a file to the board using mpremote
 # Only produces output if an error occurs
 function copy_file {
-  output="Copying $1 to $2"
+  output="Copying file to board: $1 >> $2"
   echo -n "$output"
   # Run mpremote and capture the error message
   error=$(mpremote cp $1 $2)
@@ -102,7 +102,7 @@ function copy_file {
 # Deletes a file from the board using mpremote
 # Only produces output if an error occurs
 function delete_file {
-  output="Deleting $1"
+  output="Deleting file on board: $1"
   echo -n "$output"
   # Run mpremote and capture the error message
   error=$(mpremote rm $1)
@@ -115,7 +115,7 @@ function delete_file {
 }
 
 function create_folder {
-  output_msg="Creating $1 on board"
+  output_msg="Creating folder on board: $1"
   echo -n "$output_msg"
   error=$(mpremote mkdir "$1")
   # Print error message if return code is not 0
@@ -127,7 +127,7 @@ function create_folder {
 }
 
 function delete_folder {
-  output_msg="Deleting $1 on board"
+  output_msg="Deleting Folder on board: $1"
   echo -n "$output_msg"
   delete_folder="${PYTHON_HELPERS}delete_folder(\"/$1\")"
   error=$(mpremote exec "$delete_folder")
@@ -178,7 +178,7 @@ function install_package {
       # only delete and create package directory if it is the first item
       # if the script never made it here, it means no files were found
       if [ $current_item == 1 ]; then
-        output_msg="Deleting $LIBDIR/$PKGDIR on board"
+        output_msg="Deleting Package folder on board: $LIBDIR/$PKGDIR"
         if folder_exists "${LIBDIR}/${PKGDIR}"; then
           echo -n "$output_msg"
           delete_folder="${PYTHON_HELPERS}delete_folder(\"${LIBDIR}/${PKGDIR}\")"
